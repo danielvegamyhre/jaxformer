@@ -15,6 +15,7 @@ class Transformer(nn.Module):
         batch_size, seq_len = x.shape
 
         # token and positional embeddings
+        # TODO: migrate to RoPE embeddings
         pos_indexes = jnp.arange(0, seq_len)
         tok_embed = nn.Embed(self.vocab_size, self.embed_dim)
         pos_embed = nn.Embed(self.max_seq_len, self.embed_dim)
@@ -48,6 +49,7 @@ class DecoderLayer(nn.Module):
         normed_inputs = nn.RMSNorm()(x)
 
         # MHA
+        # TODO: migrate to GQA
         mha_out = nn.attention.MultiHeadAttention(self.num_heads, qkv_features=self.hidden_dim, dtype=jnp.float32)(normed_inputs)
         
         # add residual and norm
@@ -66,6 +68,7 @@ class FeedForward(nn.Module):
         channels = x.shape[-1]
         # (batch, seq, channels) @ (channels, 4 * channels) = (batch, seq, 4 * channels)
         x = nn.Dense(channels * 4)(x)
+        # TODO: migrate to SwiGLU
         x = nn.relu(x)
         # (batch, seq, 4 * channels) @ (4 * channels, channels) = (batch, seq, channels)
         x = nn.Dense(channels)(x)

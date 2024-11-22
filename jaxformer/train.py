@@ -58,7 +58,7 @@ def main(cfg: TrainingConfig) -> None:
     for step in range(cfg.steps):
         x, y = get_batch(train_set)
         state, loss = train_step(state, x, y) 
-        jax.debug.print(f"train loss: {loss}")
+        jax.debug.print(f"step: {step} train loss: {loss}")
 
 def create_train_state(rng: jax.Array, model: nn.Module, cfg: TrainingConfig) -> TrainState:
     example_input = jnp.ones((cfg.batch_size, cfg.seq_len), dtype=jnp.int32)
