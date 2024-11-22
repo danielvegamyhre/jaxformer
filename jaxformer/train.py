@@ -16,16 +16,20 @@ def main(cfg: TrainingConfig) -> None:
     rng = jax.random.PRNGKey(0)
 
     # set up tokenizer
-
     tokenizer = tiktoken.get_encoding("cl100k_base")
     vocab_size = tokenizer.n_vocab
     jax.debug.print(f"vocab size: {vocab_size}")
 
+    # preprocess dataset
     jax.debug.print(f"tokenizing dataset: {cfg.dataset_file}")
     data = preprocess(cfg.dataset_file, tokenizer)
+
+    # set up train and validation datasets
     train_set_size = int(len(data) * 0.9)
     train_set = data[:train_set_size]
     val_set = data[train_set_size:]
+
+    # configure model architecture
     model = Transformer(
             vocab_size=vocab_size,
             num_layers=cfg.num_layers,
