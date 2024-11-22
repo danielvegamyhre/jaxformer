@@ -12,21 +12,29 @@ class Transformer(nn.Module):
 
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
-        # token and positional embeddings
         batch_size, seq_len = x.shape
+
+        # token and positional embeddings
         pos_indexes = jnp.arange(0, seq_len)
         tok_embed = nn.Embed(self.vocab_size, self.embed_dim)
         pos_embed = nn.Embed(self.max_seq_len, self.embed_dim)
         x = tok_embed(x) + pos_embed(pos_indexes) # (batch, seq, embed)
+
+        # decoder layers
         for _ in range(self.num_layers):
             x = DecoderLayer(
                 embed_dim=self.embed_dim,
                 hidden_dim=self.hidden_dim, 
-                num_heads=self.num_heads)(x)
-        
+                num_heads=self.num_heads
+            )(x)
+
+        # normalize and project to vocab size
         x = nn.RMSNorm()(x)
         x = nn.Dense(self.vocab_size)(x)
-        x = nn.softmax(x)
+
+        # loss function optax.softmax_cross_entropy_with_integer_labels
+        # expects inputs to be unnormalized log softmax probabilities.
+        x = nn.log_softmax(x)
         return x
 
 class DecoderLayer(nn.Module):
@@ -36,20 +44,21 @@ class DecoderLayer(nn.Module):
     
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
-        # RMS Norm
-        activations = nn.RMSNorm()(x)
+        # norm input activations
+        normed_inputs = nn.RMSNorm()(x)
 
         # MHA
-        activations = nn.attention.MultiHeadAttention(self.num_heads, qkv_features=self.hidden_dim, dtype=jnp.float32)(activations)
+        mha_out = nn.attention.MultiHeadAttention(self.num_heads, qkv_features=self.hidden_dim, dtype=jnp.float32)(normed_inputs)
         
-        # add and norm
-        new_activations = nn.RMSNorm()(x + activations)
+        # add residual and norm
+        residual_and_norm_out = nn.RMSNorm()(x + mha_out)
 
         # feed forward
-        new_activations = FeedForward()(new_activations)
+        ffwd_out = FeedForward()(residual_and_norm_out)
 
-        # residual
-        return activations + new_activations
+        # add residual to ffwd output
+        activations = mha_out + ffwd_out
+        return activations
 
 class FeedForward(nn.Module):
     @nn.compact

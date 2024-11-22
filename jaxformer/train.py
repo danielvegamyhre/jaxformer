@@ -16,9 +16,12 @@ def main(cfg: TrainingConfig) -> None:
     rng = jax.random.PRNGKey(0)
 
     # set up tokenizer
+
     tokenizer = tiktoken.get_encoding("cl100k_base")
     vocab_size = tokenizer.n_vocab
+    jax.debug.print(f"vocab size: {vocab_size}")
 
+    jax.debug.print(f"tokenizing dataset: {cfg.dataset_file}")
     data = preprocess(cfg.dataset_file, tokenizer)
     train_set_size = int(len(data) * 0.9)
     train_set = data[:train_set_size]
@@ -31,10 +34,27 @@ def main(cfg: TrainingConfig) -> None:
             hidden_dim=cfg.d_model,
             num_heads=cfg.num_attention_heads,
     )
+
+    @jax.jit
+    def train_step(state: TrainState, x: jax.Array, y: jax.Array) -> tuple[TrainState, float]:
+        """
+        `x` has shape (batch size, seq len)
+        `y` has shape (batch size, seq len)
+        """
+        def loss_fn(params: dict, model: nn.Module, x: jax.Array, y: jax.Array) -> jax.Array:
+            probs = model.apply({'params': params}, x) # (batch, seq len, vocab size)
+            loss = optax.softmax_cross_entropy_with_integer_labels(probs, y).mean()
+            return loss
+        loss, grads = jax.value_and_grad(loss_fn, allow_int=True)(state.params, model, x, y)
+        state = state.apply_gradients(grads=grads)
+        return state, loss
+    
+    # train loop
     state = create_train_state(rng, model, cfg)
     for step in range(cfg.steps):
         x, y = get_batch(train_set)
-        state = train_step(state, model, x, y) 
+        state, loss = train_step(state, x, y) 
+        jax.debug.print(f"train loss: {loss}")
 
 def create_train_state(rng: jax.Array, model: nn.Module, cfg: TrainingConfig) -> TrainState:
     example_input = jnp.ones((cfg.batch_size, cfg.seq_len), dtype=jnp.int32)
@@ -42,20 +62,6 @@ def create_train_state(rng: jax.Array, model: nn.Module, cfg: TrainingConfig) ->
     adamw_opt = optax.adamw(cfg.learning_rate)
     train_state = TrainState.create(apply_fn=model.apply, params=params, tx=adamw_opt)
     return train_state
-
-def train_step(state: TrainState, model: nn.Module, x: jax.Array, y: jax.Array) -> TrainState:
-    """
-    `x` has shape (batch size, seq len)
-    `y` has shape (batch size, seq len)
-    """
-    def loss_fn(params: dict, model: nn.Module, x: jax.Array, y: jax.Array) -> jax.Array:
-        probs = model.apply({'params': params}, x) # (batch, seq len, vocab size)
-        loss = optax.softmax_cross_entropy_with_integer_labels(probs, y).mean()
-        return loss
-    loss, grads = jax.value_and_grad(loss_fn, allow_int=True)(state.params, model, x, y)
-    state.apply_gradients(grads=grads)
-    jax.debug.print(f"train loss: {loss}")
-    return state
     
 def get_batch(data: jax.Array, seq_len: int = 128, batch_size: int = 1):
     ix = np.random.randint(0, len(data) - seq_len, (batch_size,))
