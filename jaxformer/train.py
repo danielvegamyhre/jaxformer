@@ -12,9 +12,6 @@ from model import Transformer
 from config import TrainingConfig
 from data import preprocess
 
-BATCH_SIZE = 8
-SEQ_LEN = 128
-
 def main(cfg: TrainingConfig) -> None:
     rng = jax.random.PRNGKey(0)
 
@@ -34,23 +31,26 @@ def main(cfg: TrainingConfig) -> None:
             hidden_dim=cfg.d_model,
             num_heads=cfg.num_attention_heads,
     )
-    state = create_train_state(rng, model)
+    state = create_train_state(rng, model, cfg)
     for step in range(cfg.steps):
         x, y = get_batch(train_set)
         state = train_step(state, model, x, y) 
 
-
-def create_train_state(rng: jax.Array, model: nn.Module) -> TrainState:
-    example_input = jnp.ones((BATCH_SIZE, SEQ_LEN), dtype=jnp.int32)
+def create_train_state(rng: jax.Array, model: nn.Module, cfg: TrainingConfig) -> TrainState:
+    example_input = jnp.ones((cfg.batch_size, cfg.seq_len), dtype=jnp.int32)
     params = model.init(rng, example_input)['params']
-    adamw_opt = optax.adamw(1e-3)
+    adamw_opt = optax.adamw(cfg.learning_rate)
     train_state = TrainState.create(apply_fn=model.apply, params=params, tx=adamw_opt)
     return train_state
 
 def train_step(state: TrainState, model: nn.Module, x: jax.Array, y: jax.Array) -> TrainState:
+    """
+    `x` has shape (batch size, seq len)
+    `y` has shape (batch size, seq len)
+    """
     def loss_fn(params: dict, model: nn.Module, x: jax.Array, y: jax.Array) -> jax.Array:
-        logits = model.apply({'params': params}, x)
-        loss = optax.softmax_cross_entropy_with_integer_labels(logits, y).mean()
+        probs = model.apply({'params': params}, x) # (batch, seq len, vocab size)
+        loss = optax.softmax_cross_entropy_with_integer_labels(probs, y).mean()
         return loss
     loss, grads = jax.value_and_grad(loss_fn, allow_int=True)(state.params, model, x, y)
     state.apply_gradients(grads=grads)

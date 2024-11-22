@@ -58,6 +58,7 @@ nest-asyncio==1.6.0
     # via orbax-checkpoint
 numpy==2.1.3
     # via
+    #   -r requirements.in
     #   chex
     #   flax
     #   jax

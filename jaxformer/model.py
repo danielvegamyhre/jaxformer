@@ -13,11 +13,11 @@ class Transformer(nn.Module):
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
         # token and positional embeddings
+        batch_size, seq_len = x.shape
+        pos_indexes = jnp.arange(0, seq_len)
         tok_embed = nn.Embed(self.vocab_size, self.embed_dim)
         pos_embed = nn.Embed(self.max_seq_len, self.embed_dim)
-
-        x = tok_embed(x) + pos_embed(x) # (batch, seq, embed)
-
+        x = tok_embed(x) + pos_embed(pos_indexes) # (batch, seq, embed)
         for _ in range(self.num_layers):
             x = DecoderLayer(
                 embed_dim=self.embed_dim,
