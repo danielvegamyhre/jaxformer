@@ -49,7 +49,7 @@ class DecoderLayer(nn.Module):
         normed_inputs = nn.RMSNorm()(x)
 
         # MHA
-        # TODO: migrate to GQA
+        # TODO: migrate to GQA with RoPE
         mha_out = nn.attention.MultiHeadAttention(self.num_heads, qkv_features=self.hidden_dim, dtype=jnp.float32)(normed_inputs)
         
         # add residual and norm
