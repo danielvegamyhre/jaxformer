@@ -64,7 +64,9 @@ class FeedForward(nn.Module):
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
         channels = x.shape[-1]
+        # (batch, seq, channels) @ (channels, 4 * channels) = (batch, seq, 4 * channels)
         x = nn.Dense(channels * 4)(x)
         x = nn.relu(x)
+        # (batch, seq, 4 * channels) @ (4 * channels, channels) = (batch, seq, channels)
         x = nn.Dense(channels)(x)
         return x
