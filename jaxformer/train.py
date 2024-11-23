@@ -39,7 +39,7 @@ def main(cfg: TrainingConfig) -> None:
             num_heads=cfg.num_attention_heads,
     )
 
-    @jax.jit
+    #@jax.jit
     def train_step(state: TrainState, x: jax.Array, y: jax.Array) -> tuple[TrainState, float]:
         """
         `x` has shape (batch size, seq len)

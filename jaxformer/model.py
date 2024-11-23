@@ -45,21 +45,74 @@ class DecoderLayer(nn.Module):
     
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
+        """`x` should have shape (batch, seq, embed)"""
+        batch_size, seq_len, embed_dim = x.shape
+
         # norm input activations
         normed_inputs = nn.RMSNorm()(x)
 
         # MHA
         # TODO: migrate to GQA with RoPE
-        mha_out = nn.attention.MultiHeadAttention(self.num_heads, qkv_features=self.hidden_dim, dtype=jnp.float32)(normed_inputs)
-        
+        head_dim = self.hidden_dim // self.num_heads
+
+        Q = self.param(
+            'Q',
+            nn.initializers.normal(),
+            (self.embed_dim, self.num_heads, head_dim),
+        )
+
+        # (batch, seq, embed) @ (embed, num_heads, head dim) = (batch, seq, num_heads, head_dim)
+        q_proj = jnp.einsum("bse,ehd->bshd", x, Q)
+
+        K = self.param(
+            'K',
+            nn.initializers.normal(),
+            (self.embed_dim, self.num_heads, head_dim),
+        )
+
+        # (batch, seq, embed) @ (embed, num_heads, head dim) = (batch, seq, num_heads, head_dim)
+        k_proj = jnp.einsum("bse,ehd->bshd", x, K)
+
+        # scaled dot product attention
+        scale = 1 / Q.shape[-1] ** 0.5
+        attention_scores = jnp.einsum("bshd,bthd->bhst", q_proj, k_proj)  # (batch, heads, seq, seq)
+        causal_mask = nn.make_causal_mask(jax.core.ShapedArray((batch_size, seq_len), dtype=jnp.float32))
+        attention_scores = jnp.where(causal_mask > 0, attention_scores, -float('inf'))
+        attention_weights = nn.softmax(attention_scores, axis=-1)
+
+        V = self.param(
+            'V',
+            nn.initializers.normal(),
+            (self.embed_dim, self.num_heads, head_dim),
+        )
+        # (batch, seq, embed) @ (embed, heads, head dim) = (batch, seq, heads, head_dim)
+        v_proj = jnp.einsum("bse,ehd->bshd", x, V)
+
+        # (batch, seq, heads, head_dim) @ (batch, heads, seq, seq) = (batch, seq, heads, head dim)
+        # (b, h, d, s) @ (b, h, s, s) = (b, h, d, s) -> rearrange -> (b, s, h, d)
+        mha_out = jnp.einsum("bshd,bhst->bthd", v_proj, attention_weights)
+
+        # "concat" heads by reshaping
+        # (batch, seq, heads, embed)
+        mha_out = mha_out.reshape(batch_size, seq_len, self.hidden_dim)
+
+        # output projection from hidden dim back to embed dim to enable residual
+        O = self.param(
+            'O',
+            nn.initializers.normal(),
+            (self.hidden_dim, self.embed_dim),
+        )
+        # (batch, seq, hidden) @ (hidden, embed) = (batch, seq, embed)
+        mha_out_proj = jnp.einsum("btd,de->bte", mha_out, O)
+
         # add residual and norm
-        residual_and_norm_out = nn.RMSNorm()(x + mha_out)
+        residual_and_norm_out = nn.RMSNorm()(x + mha_out_proj)
 
         # feed forward
         ffwd_out = FeedForward()(residual_and_norm_out)
 
         # add residual to ffwd output
-        activations = mha_out + ffwd_out
+        activations = mha_out_proj + ffwd_out
         return activations
 
 class FeedForward(nn.Module):
