@@ -39,7 +39,7 @@ def main(cfg: TrainingConfig) -> None:
             num_heads=cfg.num_attention_heads,
     )
 
-    #@jax.jit
+    @jax.jit
     def train_step(state: TrainState, x: jax.Array, y: jax.Array) -> tuple[TrainState, float]:
         """
         `x` has shape (batch size, seq len)
@@ -56,7 +56,7 @@ def main(cfg: TrainingConfig) -> None:
     # train loop
     state = create_train_state(rng, model, cfg)
     for step in range(cfg.steps):
-        x, y = get_batch(train_set)
+        x, y = get_batch(train_set, seq_len=cfg.seq_len)
         state, loss = train_step(state, x, y) 
         jax.debug.print(f"step: {step} train loss: {loss}")
 

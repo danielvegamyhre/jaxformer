@@ -76,9 +76,10 @@ class DecoderLayer(nn.Module):
         # scaled dot product attention
         scale = 1 / Q.shape[-1] ** 0.5
         attention_scores = jnp.einsum("bshd,bthd->bhst", q_proj, k_proj)  # (batch, heads, seq, seq)
+        attention_scores *= scale
         causal_mask = nn.make_causal_mask(jax.core.ShapedArray((batch_size, seq_len), dtype=jnp.float32))
-        attention_scores = jnp.where(causal_mask > 0, attention_scores, -float('inf'))
-        attention_weights = nn.softmax(attention_scores, axis=-1)
+        masked_attention_scores = jnp.where(causal_mask > 0, attention_scores, -float('inf'))
+        masked_attention_scores = nn.softmax(attention_scores, axis=-1)
 
         V = self.param(
             'V',
@@ -90,7 +91,7 @@ class DecoderLayer(nn.Module):
 
         # (batch, seq, heads, head_dim) @ (batch, heads, seq, seq) = (batch, seq, heads, head dim)
         # (b, h, d, s) @ (b, h, s, s) = (b, h, d, s) -> rearrange -> (b, s, h, d)
-        mha_out = jnp.einsum("bshd,bhst->bthd", v_proj, attention_weights)
+        mha_out = jnp.einsum("bshd,bhst->bthd", v_proj, masked_attention_scores)
 
         # "concat" heads by reshaping
         # (batch, seq, heads, embed)
