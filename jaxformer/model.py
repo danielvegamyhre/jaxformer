@@ -46,13 +46,31 @@ class DecoderLayer(nn.Module):
     @nn.compact
     def __call__(self, x: jax.Array) -> jax.Array:
         """`x` should have shape (batch, seq, embed)"""
-        batch_size, seq_len, embed_dim = x.shape
-
-        # norm input activations
         normed_inputs = nn.RMSNorm()(x)
 
-        # MHA
         # TODO: migrate to GQA with RoPE
+        mha_out = MultiHeadAttention(
+                        num_heads=self.num_heads,
+                        embed_dim =self.embed_dim,
+                        hidden_dim=self.hidden_dim
+        )(normed_inputs)
+
+        residual_and_norm_out = nn.RMSNorm()(x + mha_out)
+
+        ffwd_out = FeedForward()(residual_and_norm_out)
+
+        # add residual to ffwd output
+        activations = mha_out + ffwd_out
+        return activations
+
+class MultiHeadAttention(nn.Module):
+    num_heads: int
+    embed_dim: int
+    hidden_dim: int
+
+    @nn.compact
+    def __call__(self, x: jax.Array) -> jax.Array:
+        batch_size, seq_len = x.shape[0], x.shape[1]
         head_dim = self.hidden_dim // self.num_heads
 
         Q = self.param(
@@ -105,16 +123,7 @@ class DecoderLayer(nn.Module):
         )
         # (batch, seq, hidden) @ (hidden, embed) = (batch, seq, embed)
         mha_out_proj = jnp.einsum("btd,de->bte", mha_out, O)
-
-        # add residual and norm
-        residual_and_norm_out = nn.RMSNorm()(x + mha_out_proj)
-
-        # feed forward
-        ffwd_out = FeedForward()(residual_and_norm_out)
-
-        # add residual to ffwd output
-        activations = mha_out_proj + ffwd_out
-        return activations
+        return mha_out_proj
 
 class FeedForward(nn.Module):
     @nn.compact
