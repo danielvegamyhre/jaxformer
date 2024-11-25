@@ -48,11 +48,11 @@ def main(cfg: TrainingConfig) -> None:
         `x` has shape (batch size, seq len)
         `y` has shape (batch size, seq len)
         """
-        def loss_fn(params: dict, model: nn.Module, x: jax.Array, y: jax.Array) -> jax.Array:
+        def loss_fn(params: dict, x: jax.Array, y: jax.Array) -> jax.Array:
             probs = model.apply({'params': params}, x) # (batch, seq len, vocab size)
             loss = optax.softmax_cross_entropy_with_integer_labels(probs, y).mean()
             return loss
-        loss, grads = jax.value_and_grad(loss_fn, allow_int=True)(state.params, model, x, y)
+        loss, grads = jax.value_and_grad(loss_fn, allow_int=True)(state.params, x, y)
         state = state.apply_gradients(grads=grads)
         return state, loss
     
