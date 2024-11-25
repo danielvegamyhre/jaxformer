@@ -42,7 +42,7 @@ def main(args: Namespace) -> None:
     print(f"output text: {output_text}")
 
 
-def autoregressive_inference(model: nn.Module, state: dict, context: jax.Array, max_output_tokens: int) -> jax.Array:
+def autoregressive_inference(model: nn.Module, state: dict, input_context: jax.Array, max_output_tokens: int) -> jax.Array:
     """
     Args:
     `model`: Jax/Flax model restored from a checkpoint.
@@ -54,20 +54,18 @@ def autoregressive_inference(model: nn.Module, state: dict, context: jax.Array, 
     """
 
     @jax.jit
-    def step_fn(context: jax.Array) -> jax.Array:
-        # generate next token
-        next_token_probs = model.apply({"params": state['params']}, context)
-        next_token = jnp.argmax(next_token_probs[:, -1, :], axis=-1)
+    def generate(context: jax.Array, steps: int) -> jax.Array:
+        for _ in range(max_output_tokens):
+            # generate next token
+            next_token_probs = model.apply({"params": state['params']}, context)
+            next_token = jnp.argmax(next_token_probs[:, -1, :], axis=-1)
 
-        # set token as part of context for next iteration
-        context = jnp.hstack((context, next_token[jnp.newaxis, :]))
+            # set token as part of context for next iteration
+            context = jnp.hstack((context, next_token[jnp.newaxis, :]))
         return context
 
-    for _ in range(max_output_tokens):
-        context = step_fn(context)
-
     # squeeze out batch dim before returning
-    return context
+    return generate(input_context, max_output_tokens)
 
 if __name__ == '__main__':
     argparser = ArgumentParser()
