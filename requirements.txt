@@ -102,6 +102,8 @@ tiktoken==0.8.0
     # via -r requirements.in
 toolz==1.0.0
     # via chex
+tqdm==4.67.1
+    # via -r requirements.in
 typing-extensions==4.12.2
     # via
     #   chex

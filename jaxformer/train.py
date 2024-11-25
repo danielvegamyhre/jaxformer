@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-from argparse import ArgumentParser
+import os
 import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from flax.training.train_state import TrainState
+from flax.training import checkpoints
 import optax
 import tiktoken
 import numpy as np
+from dataclasses import asdict
+from argparse import ArgumentParser
 
 from model import Transformer
 from config import TrainingConfig
@@ -60,6 +63,12 @@ def main(cfg: TrainingConfig) -> None:
         state, loss = train_step(state, x, y) 
         jax.debug.print(f"step: {step} train loss: {loss}")
 
+    # checkpoint
+    abs_checkpoint_dir = os.path.abspath(cfg.checkpoint_dir)
+    jax.debug.print(f"checkpointing to {abs_checkpoint_dir}")
+    checkpoint_data = {"state": state, "training_config": asdict(cfg)}
+    checkpoints.save_checkpoint(ckpt_dir=abs_checkpoint_dir, target=checkpoint_data, step=step)
+
 def create_train_state(rng: jax.Array, model: nn.Module, cfg: TrainingConfig) -> TrainState:
     example_input = jnp.ones((cfg.batch_size, cfg.seq_len), dtype=jnp.int32)
     params = model.init(rng, example_input)['params']
@@ -98,8 +107,7 @@ if __name__ == '__main__':
 
     # checkpointing
     argparser.add_argument("--checkpoint-interval", type=int, default=100)  
-    argparser.add_argument("--load-checkpoint", type=str)
-    argparser.add_argument("--save-checkpoint", type=str)
+    argparser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
 
     # dataset
     argparser.add_argument("--dataset-file", type=str)
@@ -145,8 +153,7 @@ if __name__ == '__main__':
 
         # checkpointing
         checkpoint_interval=args.checkpoint_interval,
-        load_checkpoint=args.load_checkpoint,
-        save_checkpoint=args.save_checkpoint,
+        checkpoint_dir=args.checkpoint_dir,
 
         # dataset
         dataset_file=args.dataset_file,

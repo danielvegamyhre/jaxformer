@@ -24,9 +24,8 @@ class TrainingConfig:
     eval_iters: int
 
     # checkpointing
-    save_checkpoint: str
-    load_checkpoint: str
     checkpoint_interval: int
+    checkpoint_dir: str
 
     # dataset configs
     dataset_file: str

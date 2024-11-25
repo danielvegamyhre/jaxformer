@@ -3,3 +3,4 @@ jax
 flax
 optax
 tiktoken
+tqdm
