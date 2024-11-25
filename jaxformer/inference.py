@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import os
-import numpy as np
 import jax
 import jax.numpy as jnp
+import flax.linen as nn
 from flax.training import checkpoints
 import tiktoken
 from argparse import ArgumentParser, Namespace
-from tqdm import tqdm
+from functools import partial
 
 from model import Transformer
 from config import TrainingConfig
@@ -35,19 +35,39 @@ def main(args: Namespace) -> None:
             num_heads=cfg.num_attention_heads,
     )
 
-    # add batch dimension (N,) -> (1,N)
-    context = np.array(tokenizer.encode(args.prompt))[:, None]
+    # add batch dimension as required by model (N,) -> (1,N)
+    context = jnp.array(tokenizer.encode(args.prompt))[jnp.newaxis, :]
+    output_tokens = autoregressive_inference(model, state, context, args.num_tokens)
+    output_text = tokenizer.decode(output_tokens.squeeze().tolist())
+    print(f"output text: {output_text}")
 
-    for _ in tqdm(range(args.num_tokens)):
+
+def autoregressive_inference(model: nn.Module, state: dict, context: jax.Array, max_output_tokens: int) -> jax.Array:
+    """
+    Args:
+    `model`: Jax/Flax model restored from a checkpoint.
+    `state`: Flax TrainState object.
+    `context`: Jax array of shape (1,N).
+    `max_output_tokens`: maximum number of output tokens to generate.
+
+    Returns Jax array of output tokens of shape (max_output_tokens,).
+    """
+
+    @jax.jit
+    def step_fn(context: jax.Array) -> jax.Array:
+        # generate next token
         next_token_probs = model.apply({"params": state['params']}, context)
         next_token = jnp.argmax(next_token_probs[:, -1, :], axis=-1)
-        # add batch dim and add new token to input context for next iteration
-        context = np.hstack((context, next_token[np.newaxis, :]))
 
-    # squeeze out batch dim before decoding
-    output_text = tokenizer.decode(context.squeeze().tolist())
-    print(f"\noutput tokens: {context}")
-    print(f"output text: {output_text}")
+        # set token as part of context for next iteration
+        context = jnp.hstack((context, next_token[jnp.newaxis, :]))
+        return context
+
+    for _ in range(max_output_tokens):
+        context = step_fn(context)
+
+    # squeeze out batch dim before returning
+    return context
 
 if __name__ == '__main__':
     argparser = ArgumentParser()
