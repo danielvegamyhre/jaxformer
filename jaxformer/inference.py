@@ -43,15 +43,6 @@ def main(args: Namespace) -> None:
 
 
 def autoregressive_inference(model: nn.Module, params: jax.Array, input_context: jax.Array, max_output_tokens: int) -> jax.Array:
-    """
-    Args:
-    `model`: Jax/Flax model restored from a checkpoint.
-    `state`: Flax TrainState object.
-    `context`: Jax array of shape (1,N).
-    `max_output_tokens`: maximum number of output tokens to generate.
-
-    Returns Jax array of output tokens of shape (max_output_tokens,).
-    """
     @jax.jit
     def generate(context: jax.Array, max_output_tokens: int) -> jax.Array:
         for _ in range(max_output_tokens):
