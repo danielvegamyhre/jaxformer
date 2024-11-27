@@ -37,12 +37,12 @@ def main(args: Namespace) -> None:
 
     # add batch dimension as required by model (N,) -> (1,N)
     context = jnp.array(tokenizer.encode(args.prompt))[jnp.newaxis, :]
-    output_tokens = autoregressive_inference(model, state, context, args.num_tokens)
+    output_tokens = autoregressive_inference(model, state['params'], context, args.num_tokens)
     output_text = tokenizer.decode(output_tokens.squeeze().tolist())
     print(f"output text: {output_text}")
 
 
-def autoregressive_inference(model: nn.Module, state: dict, input_context: jax.Array, max_output_tokens: int) -> jax.Array:
+def autoregressive_inference(model: nn.Module, params: jax.Array, input_context: jax.Array, max_output_tokens: int) -> jax.Array:
     """
     Args:
     `model`: Jax/Flax model restored from a checkpoint.
@@ -52,19 +52,17 @@ def autoregressive_inference(model: nn.Module, state: dict, input_context: jax.A
 
     Returns Jax array of output tokens of shape (max_output_tokens,).
     """
-
     @jax.jit
-    def generate(context: jax.Array, steps: int) -> jax.Array:
+    def generate(context: jax.Array, max_output_tokens: int) -> jax.Array:
         for _ in range(max_output_tokens):
             # generate next token
-            next_token_probs = model.apply({"params": state['params']}, context)
+            next_token_probs = model.apply({"params": params}, context)
             next_token = jnp.argmax(next_token_probs[:, -1, :], axis=-1)
 
             # set token as part of context for next iteration
             context = jnp.hstack((context, next_token[jnp.newaxis, :]))
         return context
 
-    # squeeze out batch dim before returning
     return generate(input_context, max_output_tokens)
 
 if __name__ == '__main__':
